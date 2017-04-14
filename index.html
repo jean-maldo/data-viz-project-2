@@ -135,8 +135,8 @@
         d3.queue()
             .defer(d3.json, "world-50m.json")
             .defer(d3.csv, "data/tsunami_events.csv", parseTsunamisEarthqaukes)
-            .defer(d3.csv, "data/significant_earquake_events.csv", parseTsunamisEarthqaukes)
-            .defer(d3.csv, "data/volcano_eruption_events.csv", parseVolcanoes)
+            .defer(d3.csv, "data/tsunami_earquake_events.csv", parseTsunamisEarthqaukes)
+            .defer(d3.csv, "data/tsunami_volcano_events.csv", parseVolcanoes)
             .await(showVisualization);
 
         function showVisualization(error, data_map, data_tsunamis, data_earthquakes, data_volcanoes) {
