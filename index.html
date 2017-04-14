@@ -39,6 +39,7 @@
 <body>
     <div>
         <svg id="map_svg" height="550" width="960"></svg>
+        <label for="hue_slider">Timeline: </label><input id="year_slider" type="range" min="1950" max="2007" value="1980"/>
     <div>
     <script src="https://d3js.org/d3.v4.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-geo-projection/2.1.0/d3-geo-projection.min.js"></script>
@@ -49,7 +50,7 @@
       .interpolate(d3.interpolateHcl)
       .range([d3.rgb("#C0C0C0"), d3.rgb('#F0F0F0')]);
         var tsunamis, earthquakes, volcanoes;
-        
+        var filteredYearsTsunamis, filteredYearsEarthquakes, filteredYearsVolcanoes;
         var map_svg = d3.select("#map_svg");
         var width_map = map_svg.attr("width");
         var height_map = map_svg.attr("height");
@@ -57,14 +58,14 @@
         function parseTsunamisEarthqaukes (line) {
             line.LATITUDE = Number(line.LATITUDE);
             line.LONGITUDE = Number(line.LONGITUDE);
-
+            line.YEAR = Number(line.YEAR);
             return line;
         }
         
         function parseVolcanoes (line) {
             line.Latitude = Number(line.Latitude);
             line.Longitude = Number(line.Longitude);
-
+            line.Year = Number(line.Year);
             return line;
         }
         
@@ -172,59 +173,88 @@
                         return countries[n].color;
                     }) + 1 | 0);
                 });
-
             
-            var earthquake_points = map_svg.selectAll("circle.earthquake_points").data(earthquakes);
+            function showTsunamis(years) {
+                filteredYearsTsunamis = data_tsunamis.filter(function (d) { return years.indexOf(d.YEAR) > 0; });
                 
-            earthquake_points.enter().append("circle")
-            .attr("id", function (d, i) {
-                return "point" + i;
-            })
-            .attr("class", "earthquake_points")
-            .attr("r", 3)
-            .attr("cx", function (d) {
-                return projection([d.LONGITUDE, d.LATITUDE])[0];
-            })
-            .attr("cy", function (d) {
-                return projection([d.LONGITUDE, d.LATITUDE])[1];
-            })
-            .attr   ("fill", "green")
-            .style("opacity", 0.3);
-            
-            var volcano_points = map_svg.selectAll("circle.volcano_points").data(volcanoes);
+                var tsunami_points = map_svg.selectAll("circle.tsunami_points").data(filteredYearsTsunamis);
                 
-            volcano_points.enter().append("circle")
-            .attr("id", function (d, i) {
-                return "point" + i;
-            })
-            .attr("class", "volcano_points")
-            .attr("r", 3)
-            .attr("cx", function (d) {
-                return projection([d.Longitude, d.Latitude])[0];
-            })
-            .attr("cy", function (d) {
-                return projection([d.Longitude, d.Latitude])[1];
-            })
-            .attr   ("fill", "red")
-            .style("opacity", 0.3);
+                tsunami_points.enter().append("circle").merge(tsunami_points)
+                .attr("id", function (d, i) {
+                    return "point" + i;
+                })
+                .attr("class", "tsunami_points")
+                .attr("r", 3)
+                .attr("cx", function (d) {
+                    return projection([d.LONGITUDE, d.LATITUDE])[0];
+                })
+                .attr("cy", function (d) {
+                    return projection([d.LONGITUDE, d.LATITUDE])[1];
+                })
+                .attr   ("fill", "blue")
+                .style("opacity", 0.5);
+            }
             
-            var tsunami_points = map_svg.selectAll("circle.tsunami_points").data(tsunamis);
+            function showEarthquakes(years) {
+                filteredYearsEarthquakes = data_earthquakes.filter(function (d) { return years.indexOf(d.YEAR) > 0; });
                 
-            tsunami_points.enter().append("circle")
-            .attr("id", function (d, i) {
-                return "point" + i;
-            })
-            .attr("class", "tsunami_points")
-            .attr("r", 3)
-            .attr("cx", function (d) {
-                return projection([d.LONGITUDE, d.LATITUDE])[0];
-            })
-            .attr("cy", function (d) {
-                return projection([d.LONGITUDE, d.LATITUDE])[1];
-            })
-            .attr   ("fill", "blue")
-            .style("opacity", 0.3);
+                var earthquake_points = map_svg.selectAll("circle.earthquake_points").data(filteredYearsEarthquakes);
+                    
+                earthquake_points.enter().append("circle").merge(earthquake_points)
+                .attr("id", function (d, i) {
+                    return "point" + i;
+                })
+                .attr("class", "earthquake_points")
+                .attr("r", 3)
+                .attr("cx", function (d) {
+                    return projection([d.LONGITUDE, d.LATITUDE])[0];
+                })
+                .attr("cy", function (d) {
+                    return projection([d.LONGITUDE, d.LATITUDE])[1];
+                })
+                .attr   ("fill", "green")
+                .style("opacity", 0.5);
+            }
             
+            function showVolcanoes(years) {
+                filteredYearsVolcanoes = volcanoes.filter(function (d) { return years.indexOf(d.Year) > 0; });
+                
+                var volcano_points = map_svg.selectAll("circle.volcano_points").data(filteredYearsVolcanoes);
+                
+                volcano_points.enter().append("circle").merge(volcano_points)
+                .attr("id", function (d, i) {
+                    return "point" + i;
+                })
+                .attr("class", "volcano_points")
+                .attr("r", 3)
+                .attr("cx", function (d) {
+                    return projection([d.Longitude, d.Latitude])[0];
+                })
+                .attr("cy", function (d) {
+                    return projection([d.Longitude, d.Latitude])[1];
+                })
+                .attr   ("fill", "red")
+                .style("opacity", 0.5);
+            }
+            
+            function showDisasters(years) {
+                showTsunamis(years);
+                showEarthquakes(years);
+                showVolcanoes(years);
+            }
+            
+            d3.select("#year_slider")
+                .on("input", function () {
+                    var slider_year = Number(this.value);
+                    var yearsToFilter = [slider_year];
+                    
+                    for(var i = 0; i < 10; i++) {
+                        yearsToFilter.push(slider_year + i);
+                    }
+                    
+                    showDisasters(yearsToFilter);
+                });
+                    
         }
     </script>
     </body>
