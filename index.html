@@ -65,8 +65,18 @@
         var height_map = map_svg.attr("height");
 
         function parseLineBase (line) {
-            line.LATITUDE = Number(line.LATITUDE);
-            line.LONGITUDE = Number(line.LONGITUDE);
+            if (line.LATITUDE != "") {
+                line.LATITUDE = Number(line.LATITUDE);
+            } else {
+                line.LATITUDE = null;
+            }
+            
+            if (line.LONGITUDE != "") {
+                line.LONGITUDE = Number(line.LONGITUDE);
+            } else {
+                line.LONGITUDE = null;
+            }
+            
             line.YEAR = Number(line.YEAR);
             return line;
         }
@@ -141,8 +151,7 @@
                     return a !== b;
                 }))
                 .attr("class", "boundary")
-                .attr("clip-path", "url(#clip)")
-            
+                .attr("clip-path", "url(#clip)")            
 
             map_svg.selectAll(".country")
                 .data(countries)
@@ -156,15 +165,28 @@
                     }) + 1 | 0);
                 });
             
-            function showTsunamiOrigins(tsunami_ID=0) {
-                filteredYearsTsunamis = tsunamis.filter(function (d) { return d.ID == tsunami_ID; });
-                var tsunami_point = map_svg.selectAll("circle.tsunami_point").data(tsunamis);
+            function showTsunamiOrigins(tsunami_ID=-1) {
                 
-                tsunami_point.enter().append("circle").merge(tsunami_point)
+                var tsunami_point
+                if (tsunami_ID == -1) {
+                    filteredYearsTsunamis = tsunamis;
+                    tsunami_point = origins_svg.selectAll("circle.tsunami_point").data(filteredYearsTsunamis);
+                    drawOriginCircles(tsunami_point, "tsunami_point");
+                } else {
+                    filteredYearsTsunamis = tsunamis.filter(function (d) { return d.ID == tsunami_ID; });
+                    tsunami_point = origins_svg.selectAll("circle.tsunami_point").data(filteredYearsTsunamis);
+                    drawOriginCircles(tsunami_point, "tsunami_point");
+                    showTsunamis(tsunami_ID, filteredYearsTsunamis[0]);
+                }
+            }
+            
+            function drawOriginCircles(selector, class_name) {
+                selector.exit().remove();
+                selector.enter().append("circle").merge(selector)
                 .attr("id", function (d, i) {
                     return "point_tsunami" + i;
                 })
-                .attr("class", "tsunami_point")
+                .attr("class", class_name)
                 .attr("r", 7)
                 .attr("cx", function (d) {
                     return projection([d.LONGITUDE, d.LATITUDE])[0];
@@ -173,89 +195,42 @@
                     return projection([d.LONGITUDE, d.LATITUDE])[1];
                 })
                 .attr   ("fill", "red")
-                .style("opacity", 
-                    function(d) {
-                        if(d.ID == tsunami_ID) {
-                            return 0.9;
-                        } else {
-                            return 0.3;
-                        }
-                    })
-                .style("z-index", 1000);
+                .style("opacity", 0.95);
             }
             
-            function showTsunamis(tsunami_ID) {
-                filteredRunups = data_runups.filter(function (d) { return d.TSEVENT_ID == tsunami_ID; });
+            function showTsunamis(tsunami_ID, origin_tsunami) {
+                filteredRunups = data_runups.filter(function (d) { return d.TSEVENT_ID == tsunami_ID && d.LONGITUDE != null && d.LATITUDE != null; });
                 
-                var tsunami_runups = map_svg.selectAll("circle.tsunami_runups").data(filteredRunups);
+                var tsunami_runups = runups_svg.selectAll("circle.tsunami_runups").data(filteredRunups);
                 
                 tsunami_runups.exit().remove();
                 tsunami_runups.enter().append("circle").merge(tsunami_runups)
                 .attr("id", function (d, i) {
-                    return "point_runup" + i;
+                    return "point_runup_" + d.I_D;
                 })
                 .attr("class", "tsunami_runups")
-                .attr("r", 7)
-                .attr("cx", function (d) {
-                    return projection([d.LONGITUDE, d.LATITUDE])[0];
-                })
-                .attr("cy", function (d) {
-                    return projection([d.LONGITUDE, d.LATITUDE])[1];
-                })
+                .attr("r", 9)
+                .attr("cx", projection([origin_tsunami.LONGITUDE, origin_tsunami.LATITUDE])[0])
+                .attr("cy", projection([origin_tsunami.LONGITUDE, origin_tsunami.LATITUDE])[1])
                 .attr("fill", "blue")
-                .style("opacity", 0.3);
-                
-                showTsunamiOrigins(tsunami_ID);
-            }
-            
-            function showEarthquakes(years) {
-                filteredYearsEarthquakes = data_earthquakes.filter(function (d) { return years.indexOf(d.YEAR) > 0; });
-                
-                var earthquake_points = map_svg.selectAll("circle.earthquake_points").data(filteredYearsEarthquakes);
-                    
-                earthquake_points.enter().append("circle").merge(earthquake_points)
-                .attr("id", function (d, i) {
-                    return "point" + i;
-                })
-                .attr("class", "earthquake_points")
-                .attr("r", 3)
+                .style("opacity", 0.3)
+                .transition().duration(1500)
                 .attr("cx", function (d) {
                     return projection([d.LONGITUDE, d.LATITUDE])[0];
                 })
                 .attr("cy", function (d) {
                     return projection([d.LONGITUDE, d.LATITUDE])[1];
-                })
-                .attr   ("fill", "green")
-                .style("opacity", 0.5);
-            }
-            
-            function showVolcanoes(years) {
-                filteredYearsVolcanoes = volcanoes.filter(function (d) { return years.indexOf(d.YEAR) > 0; });
-                
-                var volcano_points = map_svg.selectAll("circle.volcano_points").data(filteredYearsVolcanoes);
-                
-                volcano_points.enter().append("circle").merge(volcano_points)
-                .attr("id", function (d, i) {
-                    return "point" + i;
-                })
-                .attr("class", "volcano_points")
-                .attr("r", 3)
-                .attr("cx", function (d) {
-                    return projection([d.LONGITUDE, d.LATITUDE])[0];
-                })
-                .attr("cy", function (d) {
-                    return projection([d.LONGITUDE, d.LATITUDE])[1];
-                })
-                .attr   ("fill", "red")
-                .style("opacity", 0.5);
+                });
             }
             
             function showDisasters(id) {
-                showTsunamis(id);
+                showTsunamiOrigins(id);
                 //showEarthquakes(years);
                 //showVolcanoes(years);
             }
-            
+            var runups_svg = map_svg.append("g").attr("id", "runups");
+            var origins_svg = map_svg.append("g").attr("id", "origins");
+        
             showDisasters();
             
                 function bubbleChart() {
@@ -372,22 +347,16 @@
 
                     groupBubbles();
                   };
-
-
-
                   
                   function ticked() {
                     bubbles
                       .attr('cx', function (d) { return d.x; })
                       .attr('cy', function (d) { return d.y; });
                   }
-
                   
                   function nodeYearPos(d) {
                     return yearCenters[d.year].x;
                   }
-
-
                  
                   function groupBubbles() {
                     hideYearTitles();
@@ -477,15 +446,7 @@
 
                 var myBubbleChart = bubbleChart();
 
-
-                function display(error, data) {
-                  if (error) {
-                    console.log(error);
-                  }
-
-                  myBubbleChart('#vis', data);
-                }
-
+                myBubbleChart('#vis', data_tsunamis);
 
                 function setupButtons() {
                   d3.select('#toolbar')
@@ -519,10 +480,6 @@
 
                   return x1 + x2;
                 }
-
-                // Load the data.
-                d3.csv('data/loss_datasets/loss_tsunamis_100.csv', display);
-
                 // setup the buttons.
                 setupButtons();
 
