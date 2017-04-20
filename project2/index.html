@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tsunamis and Their Causes</title>
+    <meta charset="utf-8">
+    <link rel="stylesheet" type="text/css"
+          href="https://fonts.googleapis.com/css?family=Raleway">
+    <!-- Latest compiled and minified CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+
+    <!-- Optional theme -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css" integrity="sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp" crossorigin="anonymous">
+
+    <style>
+        a, a:visited, a:active {
+          color: #F27C21;
+        }
+
+        .container {
+          max-width: 900px;
+          margin: auto;
+        }
+
+        .button {
+          min-width: 130px;
+          padding: 4px 5px;
+          cursor: pointer;
+          text-align: center;
+          font-size: 13px;
+          border: 1px solid #e0e0e0;
+          text-decoration: none;
+        }
+
+        .button.active {
+          background: #000;
+          color: #fff;
+        }
+
+        #vis {
+          clear: both;
+          margin-bottom: 10px;
+        }
+
+        #toolbar {
+          margin-top: 10px;
+        }
+
+        .year {
+          font-size: 21px;
+          fill: #aaa;
+          cursor: default;
+        }
+
+        .tooltip {
+            position: absolute;
+            top: 100px;
+            left: 100px;
+          -moz-border-radius:5px;
+            border-radius: 5px;
+          border: 2px solid #000;
+          background: #fff;
+            opacity: .9;
+          color: black;
+            padding: 10px;
+            width: 300px;
+            font-size: 12px;
+            z-index: 10;
+        }
+
+        .tooltip .title {
+            font-size: 13px;
+        }
+
+        .tooltip .name {
+          font-weight:bold;
+        }
+
+        .footer {
+          text-align: center;
+        }
+
+        body {
+            background: #fcfcfa;
+            font-family: 'Raleway', serif;
+        }
+
+        .stroke {
+            fill: none;
+            stroke: #000;
+            stroke-width: 3px;
+        }
+
+        .fill {
+            fill: #fff;
+        }
+
+        .graticule {
+            fill: none;
+            stroke: #777;
+            stroke-width: .5px;
+            stroke-opacity: .5;
+        }
+
+        .land {
+            fill: #222;
+        }
+
+        .boundary {
+            fill: none;
+            stroke: #fff;
+            stroke-width: .5px;
+        }
+        
+        .bar {
+		fill: #EF512F;
+		}
+
+		.bar:hover {
+		fill: #F8E81C;
+		}
+		
+		.selected {
+			fill: #e9db16;
+		}
+
+        .legendSizeLine .legendCells .cell .swatch {
+            fill: #edf1f7;
+            stroke: black;
+        }
+    </style>
+
+</head>
+<body>
+    <div class="container"><div class="row">
+        <h2>Deadliest Tsunamis Worldwide</h2>
+        <h4>Tsunamis from 1850-2017 that caused more than 50 deaths with the cause and ripple effects of each tsunami.</h4>
+        <br>
+    <div class="col-md-6">
+        <span class="label label-primary">Step 1</span>
+        <b>Click a bar to see events for different time periods in the Tsunami Bubble Chart</b>
+        <div id="plot"></div>
+    
+    </div>
+    <div class="col-md-6">
+        <span class="label label-success">Step 2</span>
+        <b>Click a Tsunami Bubble to see the locations that were hit by the Tsunami on the Map</b>
+        <div id="vis"></div>
+        </div>
+    </div>
+    <div class="row text-center">
+        
+        <span class="label label-info">Map View</span>
+        <b>Tsunami origin locations and their corresponding impacted locations</b>
+        <svg id="map_svg" height="390" width="800"></svg></div>
+    </div>
+    
+        
+
+   
+    
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+
+    <script src="https://d3js.org/d3.v4.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-geo-projection/2.1.0/d3-geo-projection.min.js"></script>
+    <script src="http://d3js.org/topojson.v2.min.js"></script>    
+    <script src="src/tooltip.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-legend/2.24.0/d3-legend.min.js"></script>
+    
+    <script>
+        var length = 10;
+        var color = d3.scaleLinear().domain([1, length])
+            .interpolate(d3.interpolateHcl)
+            .range([d3.rgb("#C0C0C0"), d3.rgb('#F0F0F0')]);
+        var tsunamis, filteredRunups, filteredYearsTsunamis;
+        var map_svg = d3.select("#map_svg");
+        var width_map = map_svg.attr("width");
+        var height_map = map_svg.attr("height");
+        var time_periods = [1850, 1875, 1900, 1925, 1950, 1975, 2000, 2017];
+
+        function parseLineBase(line) {
+            if (line.LATITUDE != "") {
+                line.LATITUDE = Number(line.LATITUDE);
+            } else {
+                line.LATITUDE = null;
+            }
+
+            if (line.LONGITUDE != "") {
+                line.LONGITUDE = Number(line.LONGITUDE);
+            } else {
+                line.LONGITUDE = null;
+            }
+
+            line.YEAR = Number(line.YEAR);
+
+            return line;
+        }
+
+        function parseTsunamiOrigins(line) {
+            parseLineBase(line);
+            for (var i = 0; i < time_periods.length - 1; i++) {
+                if (line.YEAR >= time_periods[i] && line.YEAR < time_periods[i + 1]) {
+                    line.RANGE = time_periods[i].toString() + "-" + time_periods[i + 1].toString();
+                    break;
+                } else {
+                    line.RANGE = "Other";
+                }
+            }
+
+            return line;
+        }
+
+        var projection = d3.geoRobinson()
+            .rotate([160, 0])
+            .scale(115)
+            .translate([width_map / 2, (height_map / 2) + 30])
+            .precision(.1);
+
+        var path = d3.geoPath().projection(projection);
+
+        var graticule = d3.geoGraticule();
+
+        var defs = map_svg.append("defs");
+
+        defs.append("path")
+            .datum({
+                type: "Sphere"
+            })
+            .attr("id", "sphere")
+            .attr("d", path);
+
+        defs.append("clipPath")
+            .attr("id", "clip")
+            .append("use")
+            .attr("xlink:href", "#sphere");
+
+        map_svg.append("use")
+            .attr("class", "stroke")
+            .attr("xlink:href", "#sphere");
+
+        map_svg.append("use")
+            .attr("class", "fill")
+            .attr("xlink:href", "#sphere");
+
+        map_svg.append("path")
+            .datum(graticule)
+            .attr("class", "graticule")
+            .attr("clip-path", "url(#clip)")
+            .attr("d", path);
+
+        var mapLegend = [{text: "Location of tsunami origin", color: "rgb(208, 2, 27)", offsetY: 20, offsetX: 140}, {text: "Impacted by the Tsunami (Click the bubble to see)", color: "rgb(74, 144, 226)", offsetY: 0, offsetX: 190}];
+        
+        var offsetTotalX = 0;
+        var offsetTotalY = 0;
+        for(var i=0; i < mapLegend.length; i++) {
+        
+            offsetTotalX += mapLegend[i].offsetX;
+            offsetTotalY += mapLegend[i].offsetY;
+            
+            map_svg.append("circle")
+            .attr('class', 'mapLegendIcon')
+            .attr("cx", offsetTotalX)
+            .attr("cy", offsetTotalY)
+            .attr("r", 8)
+            .attr("fill", mapLegend[i].color);
+            
+            map_svg.append('text')
+                .attr('class', 'mapLegendLabel')
+                .attr('x', offsetTotalX)
+                .attr('dx', 10)
+                .attr('y', offsetTotalY)
+                .attr('text-anchor', 'start')
+                .attr("alignment-baseline", "middle")
+                .text(mapLegend[i].text);
+        }
+        
+        d3.queue()
+            .defer(d3.json, "data/world-50m.json")
+            .defer(d3.csv, "data/loss_tsunamis_50.csv", parseTsunamiOrigins)
+            .defer(d3.csv, "data/tsunami_runups.csv", parseLineBase)
+            .await(showVisualization);
+
+        function showVisualization(error, data_map, data_tsunamis, data_runups) {
+            if (error) throw error;
+            tsunamis = data_tsunamis;
+
+            var countries = topojson.feature(data_map, data_map.objects.countries).features,
+                neighbors = topojson.neighbors(data_map.objects.countries.geometries);
+
+            map_svg.insert("path", ".graticule")
+                .datum(topojson.feature(data_map, data_map.objects.land))
+                .attr("class", "land")
+                .attr("clip-path", "url(#clip)")
+                .attr("d", path);
+
+            map_svg.insert("path", ".graticule")
+                .datum(topojson.mesh(data_map, data_map.objects.countries, function(a, b) {
+                    return a !== b;
+                }))
+                .attr("class", "boundary")
+                .attr("clip-path", "url(#clip)")
+
+            map_svg.selectAll(".country")
+                .data(countries)
+                .enter().insert("path", ".graticule")
+                .attr("class", "country")
+                .attr("clip-path", "url(#clip)")
+                .attr("d", path)
+                .style("fill", function(d, i) {
+                    return color(d.color = d3.max(neighbors[i], function(n) {
+                        return countries[n].color;
+                    }) + 1 | 0);
+                });
+
+            function showTsunamiOrigins(tsunami_ID = -1) {
+
+                var tsunami_point
+                if (tsunami_ID == -1) {
+                    runups_svg.selectAll("circle.tsunami_runups").remove();
+                    filteredYearsTsunamis = tsunamis;
+                    tsunami_point = origins_svg.selectAll("circle.tsunami_point").data(filteredYearsTsunamis);
+                    drawOriginCircles(tsunami_point, "tsunami_point");
+                } else {
+                    if (typeof(tsunami_ID) == "string") {
+                        filteredYearsTsunamis = tsunamis.filter(function(d) {
+                            return d.ID == tsunami_ID;
+                        });
+                        tsunami_point = origins_svg.selectAll("circle.tsunami_point").data(filteredYearsTsunamis);
+                        drawOriginCircles(tsunami_point, "tsunami_point");
+                        showTsunamis(tsunami_ID, filteredYearsTsunamis[0]);
+                    } else {
+                        runups_svg.selectAll("circle.tsunami_runups").remove();
+                        filteredYearsTsunamis = tsunamis.filter(function(d) {
+                            return tsunami_ID.indexOf(d.ID) > 0;
+                        });
+                        tsunami_point = origins_svg.selectAll("circle.tsunami_point").data(filteredYearsTsunamis);
+                        drawOriginCircles(tsunami_point, "tsunami_point");
+                    }
+                }
+            }
+
+            function drawOriginCircles(selector, class_name) {
+                selector.exit().remove();
+                selector.enter().append("circle").merge(selector)
+                    .attr("id", function(d, i) {
+                        return "point_tsunami" + i;
+                    })
+                    .attr("class", class_name)
+                    .attr("r", 7)
+                    .attr("cx", function(d) {
+                        return projection([d.LONGITUDE, d.LATITUDE])[0];
+                    })
+                    .attr("cy", function(d) {
+                        return projection([d.LONGITUDE, d.LATITUDE])[1];
+                    })
+                    .attr("fill", "red")
+                    .style("opacity", 0)
+                    .transition().duration(1500)
+                    .style("opacity", 0.80);
+            }
+
+            function showTsunamis(tsunami_ID, origin_tsunami) {
+                filteredRunups = data_runups.filter(function(d) {
+                    return d.TSEVENT_ID == tsunami_ID && d.LONGITUDE != null && d.LATITUDE != null;
+                });
+
+                var tsunami_runups = runups_svg.selectAll("circle.tsunami_runups").data(filteredRunups);
+
+                tsunami_runups.exit().remove();
+                tsunami_runups.enter().append("circle").merge(tsunami_runups)
+                    .attr("id", function(d, i) {
+                        return "point_runup_" + d.I_D;
+                    })
+                    .attr("class", "tsunami_runups")
+                    .attr("r", 9)
+                    .attr("cx", projection([origin_tsunami.LONGITUDE, origin_tsunami.LATITUDE])[0])
+                    .attr("cy", projection([origin_tsunami.LONGITUDE, origin_tsunami.LATITUDE])[1])
+                    .attr("fill", "blue")
+                    .style("opacity", 0.3)
+                    .transition().duration(1500)
+                    .attr("cx", function(d) {
+                        return projection([d.LONGITUDE, d.LATITUDE])[0];
+                    })
+                    .attr("cy", function(d) {
+                        return projection([d.LONGITUDE, d.LATITUDE])[1];
+                    });
+            }
+
+            function showDisasters(id) {
+                showTsunamiOrigins(id);
+            }
+            var runups_svg = map_svg.append("g").attr("id", "runups");
+            var origins_svg = map_svg.append("g").attr("id", "origins");
+
+            showDisasters();
+
+            function bubbleChart() {
+                var width = 430;
+                var height = 360;
+
+
+                var center = {
+                    x: width / 2,
+                    y: height / 2
+                };
+                var tooltip = floatingTooltip('gates_tooltip', 240);
+
+
+                var forceStrength = 0.02;
+
+                var svg = null;
+                var bubbles = null;
+                var nodes = [];
+
+
+                function charge(d) {
+                    return -Math.pow(d.radius, 2.0) * forceStrength;
+                }
+
+
+                var simulation = d3.forceSimulation()
+                    .velocityDecay(0.2)
+                    .force('x', d3.forceX().strength(forceStrength).x(center.x))
+                    .force('y', d3.forceY().strength(forceStrength).y(center.y))
+                    .force('charge', d3.forceManyBody().strength(charge))
+                    .on('tick', ticked);
+
+                simulation.stop();
+
+
+                var fillColor = d3.scaleOrdinal()
+                    .domain(['earthquake', 'volcano', 'others'])
+                    .range(['#EF4581', '#21C1F2', '#F27C21']);
+
+                function causeDescription(cause_code) {
+                    var cause_description = '';
+
+                    if (cause_code == 1) {
+                        cause_description = 'earthquake';
+                    } else if (cause_code == 6) {
+                        cause_description = 'volcano';
+                    } else {
+                        cause_description = 'others';
+                    }
+
+                    return cause_description
+                }
+
+                function createNodes(rawData) {
+                    var maxAmount = d3.max(rawData, function(d) {
+                        return +d.DEATHS;
+                    });
+
+                    // Sizes bubbles based on area.
+                    var radiusScale = d3.scalePow()
+                        .exponent(0.4)
+                        .range([2, 85])
+                        .domain([0, maxAmount]);
+
+                    // working with data.
+                    var myNodes = rawData.map(function(d) {
+                        return {
+                            id: d.ID,
+                            radius: radiusScale(+d.DEATHS),
+                            death: +d.DEATHS,
+                            value: +d.DAMAGE_MILLIONS_DOLLARS,
+                            name: d.COUNTRY,
+                            group: causeDescription(+d.CAUSE_CODE),
+                            year: d.YEAR,
+                            x: Math.random() * 420,
+                            y: Math.random() * 360
+                        };
+                    });
+
+                    myNodes.sort(function(a, b) {
+                        return b.value - a.value;
+                    });
+
+                    return myNodes;
+                }
+
+                var chart = function chart(selector, rawData) {
+                    // convert raw data into nodes data
+                    nodes = createNodes(rawData);
+
+                    svg = d3.select(selector)
+                        .append('svg')
+                        .attr('width', width)
+                        .attr('height', height);
+
+                    var ordinal = d3.scaleOrdinal()
+                        .domain(["Earthquake", "Volcano", "Other"])
+                        .range(["rgb(239, 69, 129)", "rgb(33, 193, 242)", "rgb(242, 124, 33)", "rgb(223, 199, 31)", "rgb(234, 118, 47)"]);
+
+                    svg.append("g")
+                        .attr("class", "legendOrdinal")
+                        .attr("transform", "translate(10,20)");
+
+                    var legendOrdinal = d3.legendColor()
+                        .title("Causes")
+                        .shape("circle")
+                        .shapePadding(10)
+                        .cellFilter(function(d) {
+                            return d.label !== "e"
+                        })
+                        .scale(ordinal);
+
+                    svg.select(".legendOrdinal")
+                        .call(legendOrdinal);
+
+                    var circleSize = d3.scaleLinear().domain([0, 10]).range([4, 10]);
+
+                    svg.append("g")
+                        .attr("class", "legendSizeLine")
+                        .attr("transform", "translate(320, 10)");
+
+                    var legendSizeLine = d3.legendSize()
+                        .scale(circleSize)
+                        .shape("circle")
+                        .orient("horizontal")
+                        .labels(["Small Life Loss", "", "", "", "Large Life Loss"])
+                        .labelWrap(30)
+                        .labelAlign("start")
+                        .shapePadding(10);
+
+                    svg.select(".legendSizeLine")
+                        .call(legendSizeLine);
+
+                    bubbles = svg.selectAll('.bubble')
+                        .data(nodes, function(d) {
+                            return d.id;
+                        });
+
+
+                    var bubblesE = bubbles.enter().append('circle')
+                        .classed('bubble', true)
+                        .attr('r', 0)
+                        .attr('fill', function(d) {
+                            return fillColor(d.group);
+                        })
+                        .attr('stroke', function(d) {
+                            return d3.rgb(fillColor(d.group)).darker();
+                        })
+                        .attr('stroke-width', 2)
+                        .on('mouseover', showDetail)
+                        .on('mouseout', hideDetail)
+                        .on("click", function(d) {
+                            svg.selectAll(".bubble")
+                                .style('fill', function(e) {
+                                    return fillColor(e.group);
+                                })
+                                .style('stroke', function(e) {
+                                    return d3.rgb(fillColor(e.group)).darker()
+                                });
+
+                            d3.select(this)
+                                .style('fill', function(e) {
+                                    return d3.rgb(fillColor(e.group)).darker(0.5);
+                                })
+                                .style('stroke', 'black');
+                            showDisasters(d.id);
+                        });
+                    bubbles = bubbles.merge(bubblesE);
+
+
+                    bubbles.transition()
+                        .duration(2000)
+                        .attr('r', function(d) {
+                            return d.radius;
+                        });
+
+                    simulation.nodes(nodes);
+
+                    groupBubbles();
+                };
+
+                function ticked() {
+                    bubbles
+                        .attr('cx', function(d) {
+                            return d.x;
+                        })
+                        .attr('cy', function(d) {
+                            return d.y;
+                        });
+                }
+
+                function nodeYearPos(d) {
+                    return yearCenters[d.year].x;
+                }
+
+                function groupBubbles() {
+                    hideYearTitles();
+
+                    //Reset the 'x' 
+                    simulation.force('x', d3.forceX().strength(forceStrength).x(center.x));
+
+                    simulation.alpha(1).restart();
+                }
+
+                function splitBubbles() {
+                    showYearTitles();
+
+                    simulation.force('x', d3.forceX().strength(forceStrength).x(nodeYearPos));
+
+                    simulation.alpha(1).restart();
+                }
+                
+                function hideYearTitles() {
+                    svg.selectAll('.year').remove();
+                }
+
+                function showYearTitles() {
+                    var yearsData = d3.keys(yearsTitleX);
+                    var years = svg.selectAll('.year')
+                        .data(yearsData);
+
+                    years.enter().append('text')
+                        .attr('class', 'year')
+                        .attr('x', function(d) {
+                            return yearsTitleX[d];
+                        })
+                        .attr('y', 40)
+                        .attr('text-anchor', 'middle')
+                        .text(function(d) {
+                            return d;
+                        });
+                }
+
+                function showDetail(d) {
+                    // change outline to indicate hover state.
+                    d3.select(this)
+                    .attr('stroke', 'black')
+                    .style('fill', function(e) {
+                            return d3.rgb(fillColor(e.group)).darker(-0.5);
+                        });
+
+                    var content = '<span class="name">Country name: </span><span class="value">' +
+                        d.name +
+                        '</span><br/>' +
+                        '<span class="name">Life Loss (persons): </span><span class="value">' +
+                        d.death +
+                        '</span><br/>' +
+                        '<span class="name">Economy Loss ($M): </span><span class="value">$' +
+                        addCommas(d.value) +
+                        '</span><br/>' +
+                        '<span class="name">Year: </span><span class="value">' +
+                        d.year +
+                        '</span>';
+
+                    tooltip.showTooltip(content, d3.event);
+                }
+
+                function hideDetail(d) {
+                    // reset outline
+                    d3.select(this)
+                        .attr('stroke', d3.rgb(fillColor(d.group)).darker())
+                        .style('fill', function(e) {
+                                return fillColor(e.group);
+                            });
+                            
+                    tooltip.hideTooltip();
+                }
+
+                chart.toggleDisplay = function(displayName) {
+                    if (displayName === 'year') {
+                        splitBubbles();
+                    } else {
+                        groupBubbles();
+                    }
+                };
+
+
+                // return the chart function from closure.
+                return chart;
+            }
+
+            var myBubbleChart = bubbleChart();
+
+            function display(error, data) {
+                if (error) {
+                    console.log(error);
+                }
+
+                myBubbleChart('#vis', data);
+            }
+
+            function setupButtons() {
+                d3.select('#toolbar')
+                    .selectAll('.button')
+                    .on('click', function() {
+                        // Remove active class from all buttons
+                        d3.selectAll('.button').classed('active', false);
+                        // Find the button just clicked
+                        var button = d3.select(this);
+
+                        // Set it as the active button
+                        button.classed('active', true);
+
+                        // Get the id of the button
+                        var buttonId = button.attr('id');
+
+                        myBubbleChart.toggleDisplay(buttonId);
+                    });
+            }
+
+            function addCommas(nStr) {
+                nStr += '';
+                var x = nStr.split('.');
+                var x1 = x[0];
+                var x2 = x.length > 1 ? '.' + x[1] : '';
+                var rgx = /(\d+)(\d{3})/;
+                while (rgx.test(x1)) {
+                    x1 = x1.replace(rgx, '$1' + ',' + '$2');
+                }
+
+                return x1 + x2;
+            }
+
+            // setup the buttons.
+            setupButtons();
+
+            var margin_plot = {
+                    top: 40,
+                    right: 40,
+                    bottom: 30,
+                    left: 60
+                },
+                width_plot = 400 - margin_plot.left - margin_plot.right,
+                height_plot = 300 - margin_plot.top - margin_plot.bottom;
+
+            var y_plot = d3.scaleBand()
+                .range([0, height_plot])
+                .padding(0.1);
+
+            var x_plot = d3.scaleLinear()
+                .range([0, width_plot]);
+
+            var tooltip_plot = floatingTooltip('gates_tooltip', 240);
+
+            var svg_plot = d3.select("#plot").append("svg")
+                .attr("width", width_plot + margin_plot.left + margin_plot.right)
+                .attr("height", height_plot + margin_plot.top + margin_plot.bottom)
+                .append("g")
+                .attr("transform", "translate(" + margin_plot.left + "," + margin_plot.top + ")");
+
+            var plot_counts = d3.nest()
+                .key(function(d) {
+                    return d.RANGE;
+                })
+                .rollup(function(v) {
+                    return v.length;
+                })
+                .entries(data_tsunamis);
+
+            y_plot.domain(plot_counts.map(function(d) {
+                return d.key;
+            }));
+
+            x_plot.domain([0, d3.max(plot_counts, function(d) {
+                return d.value;
+            })]);
+
+            var click_bar = ""
+
+            svg_plot.selectAll(".bar")
+                .data(plot_counts)
+                .enter().append("rect")
+                .attr("name", function(d) {
+                    return d.key;
+                })
+                .attr("class", "bar")
+                .attr("x", 0)
+                .attr("width", function(d) {
+                    return x_plot(d.value);
+                })
+                .attr("y", function(d) {
+                    return y_plot(d.key);
+                })
+                .attr("height", y_plot.bandwidth())
+                .on("mouseover", function(d) {
+
+                    var nextyear = parseInt(d.key) + 30
+                    if (nextyear > 2017) nextyear = 2017
+
+                    var content = '<span class="name">Year: </span><span class="value">' +
+                        d.key +
+                        '</span><br/>' +
+                        '<span class="name">Number of Tsunamis: </span><span class="value">' +
+                        d.value +
+                        '</span>';
+                    tooltip_plot.showTooltip(content, d3.event);
+                })
+                .on("mouseout", function(d) {
+                    tooltip_plot.hideTooltip();
+                })
+                .on("click", function(d) {
+                    if (click_bar == d3.select(this).attr("name")) {
+                        click_bar = ""
+                        d3.select(this).attr("class", "bar")
+                        d3.select('#vis').selectAll('svg').remove()
+                        myBubbleChart('#vis', data_tsunamis);
+                        showTsunamiOrigins();
+                    } else {
+                        click_bar = d3.select(this).attr("name")
+                        svg_plot.selectAll(".bar").attr("class", "bar")
+                        d3.select(this).attr("class", "bar selected")
+                        var newData = data_tsunamis.filter(function(d) {
+                            return d.RANGE == click_bar;
+                        });
+
+                        d3.select('#vis').selectAll('svg').remove()
+                        myBubbleChart('#vis', newData);
+
+                        var originIDs = [];
+                        for (var i = 0; i < newData.length; i++) {
+                            originIDs.push(newData[i].ID);
+                        }
+
+                        showTsunamiOrigins(originIDs);
+                    }
+                })
+
+            myBubbleChart('#vis', data_tsunamis);
+
+            // add the x Axis
+            svg_plot.append("g")
+                .attr("transform", "translate(0," + height_plot + ")")
+                .call(d3.axisBottom(x_plot));
+
+            // add the y Axis
+            svg_plot.append("g")
+                .call(d3.axisLeft(y_plot));
+
+        }
+        
+    </script>
+    </body>
+</html>
+
+

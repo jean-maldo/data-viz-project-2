@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tsunamis and Their Causes</title>
+    <meta charset="utf-8">
+    
+    <link rel="stylesheet" href="css/reset.css">
+    <link rel="stylesheet" href="css/yang.css">
+
+    <style>
+        body {
+            background: #fcfcfa;
+        }
+
+        .stroke {
+            fill: none;
+            stroke: #000;
+            stroke-width: 3px;
+        }
+
+        .fill {
+            fill: #fff;
+        }
+
+        .graticule {
+            fill: none;
+            stroke: #777;
+            stroke-width: .5px;
+            stroke-opacity: .5;
+        }
+
+        .land {
+            fill: #222;
+        }
+
+        .boundary {
+            fill: none;
+            stroke: #fff;
+            stroke-width: .5px;
+        }
+        
+        .bar {
+		fill: steelblue;
+		}
+
+		.bar:hover {
+		fill: brown;
+		}
+		
+		.selected {
+			
+			fill: brown;
+		
+/* 		border: 5px solid red; */
+		
+		
+		}
+
+		
+		
+		
+
+    </style>
+
+</head>
+<body>
+    
+        <svg id="map_svg" height="400" width="800"></svg>
+ 
+    <div id="vis"></div>
+    <div id="plot"></div>
+    <script src="https://d3js.org/d3.v4.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-geo-projection/2.1.0/d3-geo-projection.min.js"></script>
+    <script src="http://d3js.org/topojson.v2.min.js"></script>    
+    <script src="src/tooltip.js"></script>
+       
+    <script>
+        var length = 10,
+    color = d3.scaleLinear().domain([1,length])
+      .interpolate(d3.interpolateHcl)
+      .range([d3.rgb("#C0C0C0"), d3.rgb('#F0F0F0')]);
+        var tsunamis, earthquakes, volcanoes;
+        var filteredRunups, filteredYearsTsunamis, filteredYearsEarthquakes, filteredYearsVolcanoes;
+        var map_svg = d3.select("#map_svg");
+        var tsunamis_svg = d3.select("#tsunamis_svg");
+        var width_map = map_svg.attr("width");
+        var height_map = map_svg.attr("height");
+
+        function parseLineBase (line) {
+            line.LATITUDE = Number(line.LATITUDE);
+            line.LONGITUDE = Number(line.LONGITUDE);
+            line.YEAR = Number(line.YEAR);
+            return line;
+        }
+        
+        function parseRunups (line) {
+            return line;
+        }
+        
+        var projection = d3.geoRobinson()
+            .rotate([160, 0])
+            .scale(120)
+            .translate([width_map / 2, height_map / 2])
+            .precision(.1);
+            
+        var path = d3.geoPath().projection(projection);
+
+        var graticule = d3.geoGraticule();
+
+        var defs = map_svg.append("defs");
+
+        defs.append("path")
+            .datum({
+                type: "Sphere"
+            })
+            .attr("id", "sphere")
+            .attr("d", path);
+
+        defs.append("clipPath")
+            .attr("id", "clip")
+            .append("use")
+            .attr("xlink:href", "#sphere");
+
+        map_svg.append("use")
+            .attr("class", "stroke")
+            .attr("xlink:href", "#sphere");
+
+        map_svg.append("use")
+            .attr("class", "fill")
+            .attr("xlink:href", "#sphere");
+
+        map_svg.append("path")
+            .datum(graticule)
+            .attr("class", "graticule")
+            .attr("clip-path", "url(#clip)")
+            .attr("d", path);
+
+        d3.queue()
+            .defer(d3.json, "world-50m.json")
+            .defer(d3.csv, "data/loss_datasets/loss_tsunamis_100.csv", parseLineBase)
+            .defer(d3.csv, "data/tsunami_earquake_events.csv", parseLineBase)
+            .defer(d3.csv, "data/tsunami_volcano_events.csv", parseLineBase)
+            .defer(d3.csv, "data/tsunami_runups.csv", parseLineBase)
+            .await(showVisualization);
+
+        function showVisualization(error, data_map, data_tsunamis, data_earthquakes, data_volcanoes, data_runups) {
+            if (error) throw error;
+            tsunamis = data_tsunamis;
+            earthquakes = data_earthquakes;
+            volcanoes = data_volcanoes;
+            
+            var countries = topojson.feature(data_map, data_map.objects.countries).features,
+                neighbors = topojson.neighbors(data_map.objects.countries.geometries);
+
+            map_svg.insert("path", ".graticule")
+                .datum(topojson.feature(data_map, data_map.objects.land))
+                .attr("class", "land")
+                .attr("clip-path", "url(#clip)")
+                .attr("d", path);
+
+            map_svg.insert("path", ".graticule")
+                .datum(topojson.mesh(data_map, data_map.objects.countries, function(a, b) {
+                    return a !== b;
+                }))
+                .attr("class", "boundary")
+                .attr("clip-path", "url(#clip)")
+            
+
+            map_svg.selectAll(".country")
+                .data(countries)
+                .enter().insert("path", ".graticule")
+                .attr("class", "country")
+                .attr("clip-path", "url(#clip)")
+                .attr("d", path)
+                .style("fill", function(d, i) {
+                    return color(d.color = d3.max(neighbors[i], function(n) {
+                        return countries[n].color;
+                    }) + 1 | 0);
+                });
+            
+            function showTsunamiOrigins(tsunami_ID=0) {
+                filteredYearsTsunamis = tsunamis.filter(function (d) { return d.ID == tsunami_ID; });
+                var tsunami_point = map_svg.selectAll("circle.tsunami_point").data(tsunamis);
+                
+                tsunami_point.enter().append("circle").merge(tsunami_point)
+                .attr("id", function (d, i) {
+                    return "point_tsunami" + i;
+                })
+                .attr("class", "tsunami_point")
+                .attr("r", 7)
+                .attr("cx", function (d) {
+                    return projection([d.LONGITUDE, d.LATITUDE])[0];
+                })
+                .attr("cy", function (d) {
+                    return projection([d.LONGITUDE, d.LATITUDE])[1];
+                })
+                .attr   ("fill", "red")
+                .style("opacity", 
+                    function(d) {
+                        if(d.ID == tsunami_ID) {
+                            return 0.9;
+                        } else {
+                            return 0.3;
+                        }
+                    })
+                .style("z-index", 1000);
+            }
+            
+            function showTsunamis(tsunami_ID) {
+                filteredRunups = data_runups.filter(function (d) { return d.TSEVENT_ID == tsunami_ID; });
+                
+                var tsunami_runups = map_svg.selectAll("circle.tsunami_runups").data(filteredRunups);
+                
+                tsunami_runups.exit().remove();
+                tsunami_runups.enter().append("circle").merge(tsunami_runups)
+                .attr("id", function (d, i) {
+                    return "point_runup" + i;
+                })
+                .attr("class", "tsunami_runups")
+                .attr("r", 7)
+                .attr("cx", function (d) {
+                    return projection([d.LONGITUDE, d.LATITUDE])[0];
+                })
+                .attr("cy", function (d) {
+                    return projection([d.LONGITUDE, d.LATITUDE])[1];
+                })
+                .attr("fill", "blue")
+                .style("opacity", 0.3);
+                
+                showTsunamiOrigins(tsunami_ID);
+            }
+            
+            function showEarthquakes(years) {
+                filteredYearsEarthquakes = data_earthquakes.filter(function (d) { return years.indexOf(d.YEAR) > 0; });
+                
+                var earthquake_points = map_svg.selectAll("circle.earthquake_points").data(filteredYearsEarthquakes);
+                    
+                earthquake_points.enter().append("circle").merge(earthquake_points)
+                .attr("id", function (d, i) {
+                    return "point" + i;
+                })
+                .attr("class", "earthquake_points")
+                .attr("r", 3)
+                .attr("cx", function (d) {
+                    return projection([d.LONGITUDE, d.LATITUDE])[0];
+                })
+                .attr("cy", function (d) {
+                    return projection([d.LONGITUDE, d.LATITUDE])[1];
+                })
+                .attr   ("fill", "green")
+                .style("opacity", 0.5);
+            }
+            
+            function showVolcanoes(years) {
+                filteredYearsVolcanoes = volcanoes.filter(function (d) { return years.indexOf(d.YEAR) > 0; });
+                
+                var volcano_points = map_svg.selectAll("circle.volcano_points").data(filteredYearsVolcanoes);
+                
+                volcano_points.enter().append("circle").merge(volcano_points)
+                .attr("id", function (d, i) {
+                    return "point" + i;
+                })
+                .attr("class", "volcano_points")
+                .attr("r", 3)
+                .attr("cx", function (d) {
+                    return projection([d.LONGITUDE, d.LATITUDE])[0];
+                })
+                .attr("cy", function (d) {
+                    return projection([d.LONGITUDE, d.LATITUDE])[1];
+                })
+                .attr   ("fill", "red")
+                .style("opacity", 0.5);
+            }
+            
+            function showDisasters(id) {
+                showTsunamis(id);
+                //showEarthquakes(years);
+                //showVolcanoes(years);
+            }
+            
+            showDisasters();
+            
+                function bubbleChart() {
+                  var width = 760;
+                  var height = 600;
+
+
+                  var center = { x: width / 2, y: height / 2 };
+                  var tooltip = floatingTooltip('gates_tooltip', 240);
+
+                 
+                  var forceStrength = 0.02;
+
+                  var svg = null;
+                  var bubbles = null;
+                  var nodes = [];
+
+                  
+                  function charge(d) {
+                    return -Math.pow(d.radius, 2.0) * forceStrength;
+                  }
+
+                  
+                  var simulation = d3.forceSimulation()
+                    .velocityDecay(0.2)
+                    .force('x', d3.forceX().strength(forceStrength).x(center.x))
+                    .force('y', d3.forceY().strength(forceStrength).y(center.y))
+                    .force('charge', d3.forceManyBody().strength(charge))
+                    .on('tick', ticked);
+
+                  simulation.stop();
+
+                  
+                  var fillColor = d3.scaleOrdinal()
+                    .domain(['earthquake', 'volcano', 'others'])
+                    .range(['#EF4581', '#F1F1F2', '#F27C21']);
+
+                  function causeDescription(cause_code) {
+                    var cause_description = '';
+                    
+                    if (cause_code == 1) {
+                        cause_description = 'earthquake';
+                    } else if (cause_code == 6) {
+                        cause_description = 'volcano';
+                    } else {
+                        cause_description = 'others';
+                    }
+                    
+                    return cause_description
+                  }
+                  
+                  function createNodes(rawData) {
+                    var maxAmount = d3.max(rawData, function (d) { return +d.DEATHS; });
+
+                    // Sizes bubbles based on area.
+                    var radiusScale = d3.scalePow()
+                      .exponent(0.2)
+                      .range([2, 85])
+                      .domain([0, maxAmount]);
+
+                    // working with data.
+                    var myNodes = rawData.map(function (d) {
+                      return {
+                        id: d.ID,
+                        radius: radiusScale(+d.DEATHS),
+                        death: +d.DEATHS,
+                        value: +d.DAMAGE_MILLIONS_DOLLARS,
+                        name: d.COUNTRY,
+                        group: causeDescription(+d.CAUSE_CODE),
+                        year: d.YEAR,
+                        x: Math.random() * 900,
+                        y: Math.random() * 800
+                      };
+                    });
+
+                    myNodes.sort(function (a, b) { return b.value - a.value; });
+
+                    return myNodes;
+                  }
+                  
+                  var chart = function chart(selector, rawData) {
+                    // convert raw data into nodes data
+                    nodes = createNodes(rawData);
+
+                    svg = d3.select(selector)
+                      .append('svg')
+                      .attr('width', width)
+                      .attr('height', height);
+
+                    bubbles = svg.selectAll('.bubble')
+                      .data(nodes, function (d) { return d.id; });
+
+                   
+                    var bubblesE = bubbles.enter().append('circle')
+                      .classed('bubble', true)
+                      .attr('r', 0)
+                      .attr('fill', function (d) { return fillColor(d.group); })
+                      .attr('stroke', function (d) { return d3.rgb(fillColor(d.group)).darker(); })
+                      // .attr('stroke', "#eee")
+                      .attr('stroke-width', 2)
+                      .on('mouseover', showDetail)
+                      .on('mouseout', hideDetail)
+                      .on("click", function (d) {
+                                    showDisasters(d.id);
+                                });
+                    bubbles = bubbles.merge(bubblesE);
+
+                    
+                    bubbles.transition()
+                      .duration(2000)
+                      .attr('r', function (d) { return d.radius; });
+
+                    simulation.nodes(nodes);
+
+                    groupBubbles();
+                  };
+
+
+
+                  
+                  function ticked() {
+                    bubbles
+                      .attr('cx', function (d) { return d.x; })
+                      .attr('cy', function (d) { return d.y; });
+                  }
+
+                  
+                  function nodeYearPos(d) {
+                    return yearCenters[d.year].x;
+                  }
+
+
+                 
+                  function groupBubbles() {
+                    hideYearTitles();
+
+                    //Reset the 'x' 
+                    simulation.force('x', d3.forceX().strength(forceStrength).x(center.x));
+
+                    simulation.alpha(1).restart();
+                  }
+
+
+                  
+                  function splitBubbles() {
+                    showYearTitles();
+
+                    simulation.force('x', d3.forceX().strength(forceStrength).x(nodeYearPos));
+
+                    simulation.alpha(1).restart();
+                  }
+
+                  
+                  function hideYearTitles() {
+                    svg.selectAll('.year').remove();
+                  }
+
+                  
+                  function showYearTitles() {
+                    var yearsData = d3.keys(yearsTitleX);
+                    var years = svg.selectAll('.year')
+                      .data(yearsData);
+
+                    years.enter().append('text')
+                      .attr('class', 'year')
+                      .attr('x', function (d) { return yearsTitleX[d]; })
+                      .attr('y', 40)
+                      .attr('text-anchor', 'middle')
+                      .text(function (d) { return d; });
+                  }
+
+
+                  
+                  function showDetail(d) {
+                    // change outline to indicate hover state.
+                    d3.select(this).attr('stroke', 'black');
+
+                    var content = '<span class="name">Country name: </span><span class="value">' +
+                                  d.name +
+                                  '</span><br/>' +
+                                  '<span class="name">Life Loss (persons): </span><span class="value">' +
+                                  d.death +
+                                  '</span><br/>' +
+                                  '<span class="name">Economy Loss ($M): </span><span class="value">$' +
+                                  addCommas(d.value) +
+                                  '</span><br/>' +
+                                  '<span class="name">Year: </span><span class="value">' +
+                                  d.year +
+                                  '</span>';
+
+                    tooltip.showTooltip(content, d3.event);
+                  }
+
+                  
+                  function hideDetail(d) {
+                    // reset outline
+                    d3.select(this)
+                      .attr('stroke', d3.rgb(fillColor(d.group)).darker());
+
+
+                    tooltip.hideTooltip();
+                  }
+
+                  
+                  chart.toggleDisplay = function (displayName) {
+                    if (displayName === 'year') {
+                      splitBubbles();
+                    } else {
+                      groupBubbles();
+                    }
+                  };
+
+
+                  // return the chart function from closure.
+                  return chart;
+                }
+
+
+
+                var myBubbleChart = bubbleChart();
+
+
+                function display(error, data) {
+                  if (error) {
+                    console.log(error);
+                  }
+
+                  myBubbleChart('#vis', data);
+                }
+
+
+                function setupButtons() {
+                  d3.select('#toolbar')
+                    .selectAll('.button')
+                    .on('click', function () {
+                      // Remove active class from all buttons
+                      d3.selectAll('.button').classed('active', false);
+                      // Find the button just clicked
+                      var button = d3.select(this);
+
+                      // Set it as the active button
+                      button.classed('active', true);
+
+                      // Get the id of the button
+                      var buttonId = button.attr('id');
+
+                      myBubbleChart.toggleDisplay(buttonId);
+                    });
+                }
+
+
+                function addCommas(nStr) {
+                  nStr += '';
+                  var x = nStr.split('.');
+                  var x1 = x[0];
+                  var x2 = x.length > 1 ? '.' + x[1] : '';
+                  var rgx = /(\d+)(\d{3})/;
+                  while (rgx.test(x1)) {
+                    x1 = x1.replace(rgx, '$1' + ',' + '$2');
+                  }
+
+                  return x1 + x2;
+                }
+
+                // Load the data.
+                d3.csv('/data/loss_datasets/loss_tsunamis_100.csv', display);
+
+                // setup the buttons.
+                setupButtons();
+                
+                
+                
+                var margin_plot = {top: 40, right: 20, bottom: 30, left: 40},
+				width_plot = 960 - margin_plot.left - margin_plot.right,
+				height_plot = 500 - margin_plot.top - margin_plot.bottom;
+                
+                var x_plot = d3.scaleBand()
+				.range([0, width_plot])
+				.padding(0.1);
+				
+				var y_plot = d3.scaleLinear()
+				.range([height_plot, 0]);
+				
+				
+				
+				
+				var tooltip_plot = floatingTooltip('gates_tooltip', 240);
+				
+				
+                  
+                  
+				
+				var svg_plot = d3.select("#plot").append("svg")
+				.attr("width", width_plot + margin_plot.left + margin_plot.right)
+				.attr("height", height_plot + margin_plot.top + margin_plot.bottom)
+				.append("g")
+				.attr("transform", "translate(" + margin_plot.left + "," + margin_plot.top + ")");
+                
+                d3.csv("/data/loss_datasets/loss_tsunamis_100.csv", function(error, plotdata){
+	                
+	               if (error) throw error;
+				   
+	               //console.log(plotdata)
+	              // console.log(JSON.stringify(plotdata));
+	               var plot_counts = d3.nest()
+				   .key(function(d) { return d.RANGE; })
+				   .rollup(function(v) { return v.length; })
+				   .entries(plotdata);
+	               
+	               console.log(JSON.stringify(plot_counts));
+	               
+	               x_plot.domain(plot_counts.map(function(d) { return d.key; }));
+	               
+	               y_plot.domain([0, d3.max(plot_counts, function(d) { return d.value; })]);
+	               
+	               var click_bar = ""
+	               
+	               svg_plot.selectAll(".bar")
+				   .data(plot_counts)
+				   .enter().append("rect")
+				   .attr("name", function(d) { return d.key; })
+				   .attr("class", "bar")
+				   .attr("x", function(d) { return x_plot(d.key); })
+				   .attr("width", x_plot.bandwidth())
+				   .attr("y", function(d) { return y_plot(d.value); })
+				   .attr("height", function(d) { return height_plot - y_plot(d.value); })
+				   .on("mousemove", function(d){
+				   
+				   
+				   var nextyear = parseInt(d.key) + 30
+				   if (nextyear > 2017) nextyear = 2017
+
+                    var content = '<span class="name">Year: </span><span class="value">' +
+                                  d.key + 
+                                  '</span>'+'--'+ nextyear +'<br/>' +
+                                  '<span class="name">Number of Tsunamis: </span><span class="value">' +
+                                  d.value +
+                                  '</span>';
+
+                    tooltip_plot.showTooltip(content, d3.event);
+					   
+					   
+        })
+    				.on("mouseout", function(d){ 
+	    				
+	    			
+                    tooltip_plot.hideTooltip();
+	    				
+	    				
+    				})
+    				.on("click",function(d){
+	    				
+	    				
+	    				if (click_bar == d3.select(this).attr("name"))
+	    				{
+		    				console.log("already clicked")
+		    				click_bar = ""
+		    				d3.select(this).attr("class", "bar")
+		    				d3.select('#vis').selectAll('svg').remove()
+		    				myBubbleChart('#vis', plotdata);
+	    				}
+	    				else {
+		    				click_bar = d3.select(this).attr("name")
+		    				console.log(click_bar)
+		    				svg_plot.selectAll(".bar").attr("class", "bar")
+		    				d3.select(this).attr("class", "bar selected")
+		    				var newData = plotdata.filter(function(d) { return d.RANGE  == click_bar;});
+							
+							
+							//console.log(JSON.stringify(newData))
+							
+							d3.select('#vis').selectAll('svg').remove()
+		    				myBubbleChart('#vis', newData);
+		    				
+		    				
+		    				
+		    				//changebubble()
+	    				}
+	    				
+	    				
+    				})
+	               	               
+	               
+	               
+	               svg_plot.append("g")
+				   .attr("transform", "translate(0," + height_plot + ")")
+				   .call(d3.axisBottom(x_plot));
+
+				   // add the y Axis
+				   svg_plot.append("g")
+				   .call(d3.axisLeft(y_plot));
+	               
+	                
+                })
+                
+                
+                
+                
+                
+                
+                
+                
+				
+        }
+        
+    </script>
+    </body>
+</html>
+
+
